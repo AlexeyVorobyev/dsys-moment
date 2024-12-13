@@ -41,7 +41,7 @@ public class Main {
         );
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
-            mult.syncMultiply(args);
+            mult.multiply(args);
         } finally {
             int rank = MPI.COMM_WORLD.Rank();
             if (rank == 0) {
