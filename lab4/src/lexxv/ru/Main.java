@@ -10,8 +10,8 @@ import java.time.Duration;
 public class Main {
 
     public static void main(String[] args) throws Exception, MPIException {
-        testCorrectMultiply(args);
-//        timeMultiply(args);
+//        testCorrectMultiply(args);
+        timeMultiply(args);
     }
 
     public static void timeMultiply(String[] args) {
@@ -21,7 +21,7 @@ public class Main {
             mult.fillMatrixByRandom();
             Stopwatch stopwatch = Stopwatch.createStarted();
             try {
-                mult.imultiply(args);
+                mult.syncMultiply(args);
             } finally {
                 int rank = MPI.COMM_WORLD.Rank();
                 if (rank == 0) {
@@ -41,7 +41,7 @@ public class Main {
         );
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
-            mult.multiply(args);
+            mult.multiply_bcast(args);
         } finally {
             int rank = MPI.COMM_WORLD.Rank();
             if (rank == 0) {

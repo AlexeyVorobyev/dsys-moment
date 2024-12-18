@@ -4,6 +4,7 @@ import mpi.MPI;
 import mpi.Request;
 import org.jetbrains.annotations.NotNull;
 
+import java.nio.ByteBuffer;
 import java.util.Random;
 
 public class MatrixMultiplication {
@@ -39,6 +40,100 @@ public class MatrixMultiplication {
         this.matrixA = matrixA;
         this.matrixB = matrixB;
     }
+
+    public void multiply_bcast(String[] args) {
+        MPI.Init(args);
+        int rank = MPI.COMM_WORLD.Rank();
+        int size = MPI.COMM_WORLD.Size();
+
+        int bufferSize = 1024 * 1024; // Размер буфера (выбирается на основе задач)
+        byte[] buffer = new byte[bufferSize];
+        MPI.Buffer_attach(ByteBuffer.wrap(buffer));
+
+        // Учитываем случай, когда n1 не делится на количество процессов
+        int rowsPerProc = (n1 + (size - 2)) / (size - 1);
+
+        if (rank == 0) {
+            System.out.println("Process 0: Broadcasting matrices to workers.");
+
+            // Отправка строк матрицы A процессам
+            for (int i = 1; i < size; i++) {
+                for (int j = 0; j < rowsPerProc; j++) {
+                    int row = (i - 1) * rowsPerProc + j;
+                    if (row < n1) { // Отправляем только существующие строки
+                        MPI.COMM_WORLD.Bsend(matrixA[row], 0, n2, MPI.INT, i, 0);
+                        System.out.println("Process 0: Sent row " + row + " of matrix A to process " + i);
+                    }
+                }
+            }
+
+            // Отправка всей матрицы B всем процессам
+            for (int i = 1; i < size; i++) {
+                for (int rowIdx = 0; rowIdx < n2; rowIdx++) {
+                    MPI.COMM_WORLD.Bsend(matrixB[rowIdx], 0, n3, MPI.INT, i, 1);
+                }
+                System.out.println("Process 0: Sent entire matrix B to process " + i);
+            }
+        } else {
+            // Получение строк матрицы A
+            int[][] localRows = new int[rowsPerProc][n2];
+            for (int j = 0; j < rowsPerProc; j++) {
+                int globalRow = (rank - 1) * rowsPerProc + j;
+                if (globalRow < n1) { // Получаем только существующие строки
+                    MPI.COMM_WORLD.Recv(localRows[j], 0, n2, MPI.INT, 0, 0);
+                    System.out.println("Process " + rank + ": Received row " + globalRow + " of matrix A.");
+                }
+            }
+
+            // Получение всей матрицы B
+            int[][] localB = new int[n2][n3];
+            for (int i = 0; i < n2; i++) {
+                MPI.COMM_WORLD.Recv(localB[i], 0, n3, MPI.INT, 0, 1);
+            }
+            System.out.println("Process " + rank + ": Received entire matrix B.");
+
+            // Умножение строк матрицы A на столбцы матрицы B
+            int[][] localResult = new int[rowsPerProc][n3];
+            for (int i = 0; i < rowsPerProc; i++) {
+                int globalRow = (rank - 1) * rowsPerProc + i;
+                if (globalRow < n1) { // Умножаем только существующие строки
+                    for (int j = 0; j < n3; j++) {
+                        localResult[i][j] = 0;
+                        for (int k = 0; k < n2; k++) {
+                            localResult[i][j] += localRows[i][k] * localB[k][j];
+                        }
+                    }
+                }
+            }
+            System.out.println("Process " + rank + ": Computed local result.");
+
+            // Отправка локальных результатов обратно процессу 0
+            for (int i = 0; i < rowsPerProc; i++) {
+                int globalRow = (rank - 1) * rowsPerProc + i;
+                if (globalRow < n1) {
+                    MPI.COMM_WORLD.Bsend(localResult[i], 0, n3, MPI.INT, 0, 2);
+                    System.out.println("Process " + rank + ": Sent local result for row " + globalRow + " to process 0.");
+                }
+            }
+        }
+
+        // Сбор результатов на процессе 0
+        if (rank == 0) {
+            for (int i = 1; i < size; i++) {
+                for (int j = 0; j < rowsPerProc; j++) {
+                    int row = (i - 1) * rowsPerProc + j;
+                    if (row < n1) { // Собираем только существующие строки
+                        MPI.COMM_WORLD.Recv(resultMatrix[row], 0, n3, MPI.INT, i, 2);
+                        System.out.println("Process 0: Received result for row " + row + " from process " + i);
+                    }
+                }
+            }
+        }
+
+        MPI.Buffer_detach();
+        MPI.Finalize();
+    }
+
 
     public void multiply(String[] args) {
         MPI.Init(args);
